@@ -3,6 +3,7 @@ package qulifi
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 )
 
@@ -13,7 +14,8 @@ const (
 )
 
 type Server struct {
-	l net.Listener
+	l   net.Listener
+	Log *slog.Logger
 }
 
 func (s *Server) Listen(addr string) error {
@@ -38,10 +40,25 @@ func (s *Server) ListenAndServe(addr string) error {
 			return fmt.Errorf("s.l.Accept(): %w", err)
 		}
 		ctx := context.WithValue(context.Background(), ctxKeyConnID, connID)
-		go handleConnection(ctx, conn)
+		go s.handleConnection(ctx, conn)
 		connID++
 	}
 
 }
 
-func handleConnection(ctx context.Context, conn net.Conn) {}
+func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
+	rawConnID := ctx.Value(ctxKeyConnID)
+	connID, ok := rawConnID.(int)
+	if !ok {
+		s.Log.ErrorContext(ctx, "could not retrieved connection ID from context")
+		return
+	}
+
+	log := s.Log.With(slog.Attr{Key: "connID", Value: slog.IntValue(connID)})
+
+	_, err := conn.Write([]byte("+PONG\r\n"))
+	if err != nil {
+		log.ErrorContext(ctx, fmt.Sprintf("write PONG: %v", err))
+		return
+	}
+}
