@@ -98,6 +98,10 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 
 		log.InfoContext(ctx, string(msg))
 
+		if !bytes.Contains(msg, []byte("PING")) {
+			continue
+		}
+
 		// Write PONG response
 		if _, err = conn.Write([]byte("+PONG" + msgDelimiter)); err != nil {
 			log.ErrorContext(ctx, fmt.Sprintf("write PONG: %v", err))
