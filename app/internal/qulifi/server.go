@@ -33,6 +33,10 @@ func (s *Server) ListenAndServe(addr string) error {
 		return fmt.Errorf("s.Listen: %w", err)
 	}
 
+	defer func() {
+		_ = s.l.Close()
+	}()
+
 	connID := 1
 	for {
 		conn, err := s.l.Accept()
@@ -47,6 +51,10 @@ func (s *Server) ListenAndServe(addr string) error {
 }
 
 func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
+	defer func() {
+		_ = conn.Close()
+	}()
+
 	rawConnID := ctx.Value(ctxKeyConnID)
 	connID, ok := rawConnID.(int)
 	if !ok {
