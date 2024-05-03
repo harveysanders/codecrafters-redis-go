@@ -1,8 +1,12 @@
 package qulifi
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 )
@@ -11,6 +15,10 @@ type contextKey string
 
 const (
 	ctxKeyConnID = contextKey("github.com/codecrafters-io/redis-starter-go:server:connectionID")
+)
+
+const (
+	msgDelimiter = "\r\n"
 )
 
 type Server struct {
@@ -64,9 +72,42 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 
 	log := s.Log.With(slog.Attr{Key: "connID", Value: slog.IntValue(connID)})
 
-	_, err := conn.Write([]byte("+PONG\r\n"))
-	if err != nil {
-		log.ErrorContext(ctx, fmt.Sprintf("write PONG: %v", err))
-		return
+	rdr := bufio.NewReader(conn)
+
+	for {
+		msg, err := rdr.ReadBytes('\n')
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				log.ErrorContext(ctx, fmt.Sprintf("conn.ReadBytes: %v", err))
+				return
+			}
+		}
+
+		// Message must be at least 3 bytes (type:1, ending: 2)
+		if len(msg) < 3 {
+			log.ErrorContext(ctx, "short read", slog.Int("messageLen", len(msg)))
+			return
+		}
+
+		// double checking the line ending since I can only pass a byte (\n) to io.ReadBytes.
+		// TODO: See if there is a better solution
+		if !validateEnding(msg) {
+			log.ErrorContext(ctx, "invalid line ending", slog.String("message", string(msg)))
+			return // Or keep reading?
+		}
+
+		log.InfoContext(ctx, string(msg))
+
+		// Write PONG response
+		if _, err = conn.Write([]byte("+PONG" + msgDelimiter)); err != nil {
+			log.ErrorContext(ctx, fmt.Sprintf("write PONG: %v", err))
+			return
+		}
 	}
+}
+
+// validateEnding checks if the line ends with the correct delimiter.
+func validateEnding(msg []byte) bool {
+	oneFromEnd := msg[len(msg)-2:]
+	return bytes.Equal(oneFromEnd, []byte(msgDelimiter))
 }
