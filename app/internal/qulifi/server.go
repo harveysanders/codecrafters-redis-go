@@ -103,7 +103,6 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 			log.ErrorContext(ctx, fmt.Sprintf("write PONG: %v", err))
 			return
 		}
-		return
 	}
 }
 
