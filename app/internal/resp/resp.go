@@ -121,11 +121,20 @@ func (t *TypeBulkString) UnmarshalBinary(data []byte) error {
 }
 
 func (t TypeBulkString) MarshalBinary() ([]byte, error) {
-	data := make([]byte, 0, msgLen(len(t)))
+	data := make([]byte, 0, t.serializedLen())
 	data = append(data, byte(ByteBulkString))
+	data = append(data, fmt.Sprintf("%d", len(t))...)
+	data = append(data, []byte(MsgDelimiter)...)
 	data = append(data, t...)
 	data = append(data, []byte(MsgDelimiter)...)
 	return data, nil
+}
+
+// len returns the length of value when serialized. This is useful for pre-allocating buffers for marshaling.
+func (t TypeBulkString) serializedLen() int {
+	headerLen := 1
+	lenLen := 1
+	return len(t) + headerLen + lenLen + len(MsgDelimiter)*2
 }
 
 // msgLen adds 3 to the payload length. One byte for the type header, two bytes for the line-ending ("\r\n").

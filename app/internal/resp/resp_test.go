@@ -46,3 +46,25 @@ func TestUnmarshalBinary(t *testing.T) {
 		}
 	}
 }
+
+func TestBulkStringMarshalBinary(t *testing.T) {
+	testCases := []struct {
+		item resp.TypeBulkString
+		want []byte
+	}{
+		{
+			item: resp.TypeBulkString("orange"),
+			want: []byte("$6\r\norange\r\n"),
+		},
+		{
+			item: resp.TypeBulkString("ECHO"),
+			want: []byte("$4\r\nECHO\r\n"),
+		},
+	}
+
+	for _, tc := range testCases {
+		got, err := tc.item.MarshalBinary()
+		require.NoError(t, err)
+		require.Equal(t, string(tc.want), string(got))
+	}
+}
