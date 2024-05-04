@@ -94,7 +94,12 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 			switch resp.Command(cmd) {
 			case resp.CmdEcho:
 				msg := commands[i+1]
-				if _, err := conn.Write([]byte(msg)); err != nil {
+				data, err := msg.MarshalBinary()
+				if err != nil {
+					log.ErrorContext(ctx, "msg.MarshalBinary", logKeyErr, err)
+					return
+				}
+				if _, err := conn.Write([]byte(data)); err != nil {
 					log.ErrorContext(ctx, "handleEcho", logKeyErr, err)
 					return
 				}
