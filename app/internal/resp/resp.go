@@ -75,6 +75,8 @@ func (a *TypeArray) ReadFrom(r io.Reader) (int64, error) {
 		return nRead, fmt.Errorf("read length: %w", err)
 	}
 
+	nRead += int64(len(lenRaw) + len(MsgDelimiter))
+
 	arrLen, err := strconv.Atoi(lenRaw)
 	if err != nil {
 		return nRead, fmt.Errorf("convert length: %w", err)
@@ -91,17 +93,13 @@ func (a *TypeArray) ReadFrom(r io.Reader) (int64, error) {
 		typ := TypeByte(rawItem[0])
 		switch typ {
 		case ByteBulkString:
-			var bs TypeBulkString
 			content, err := rdr.ReadLine()
 			if err != nil {
 				return nRead, fmt.Errorf("read string content: %w", err)
 			}
-			nRead += int64(len(content))
+			nRead += int64(len(content) + len(MsgDelimiter))
 
-			if err := bs.UnmarshalBinary([]byte(content)); err != nil {
-				return nRead, fmt.Errorf("bulkString.UnmarshalBinary: %w", err)
-			}
-			*a = append(*a, bs)
+			*a = append(*a, TypeBulkString(content))
 		default:
 			return nRead, fmt.Errorf("unknown type: %s", string(typ))
 		}
