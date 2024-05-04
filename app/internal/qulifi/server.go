@@ -1,24 +1,21 @@
 package qulifi
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
+
+	"github.com/codecrafters-io/redis-starter-go/app/internal/resp"
 )
 
 type contextKey string
 
 const (
 	ctxKeyConnID = contextKey("github.com/codecrafters-io/redis-starter-go:server:connectionID")
-)
-
-const (
-	msgDelimiter = "\r\n"
+	logKeyErr    = "error"
 )
 
 type Server struct {
@@ -72,46 +69,45 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 
 	log := s.Log.With(slog.Attr{Key: "connID", Value: slog.IntValue(connID)})
 
-	rdr := bufio.NewReader(conn)
-
 	for {
-		msg, err := rdr.ReadBytes('\n')
-		if err != nil {
+		var arrOffWire resp.TypeArray
+
+		if _, err := arrOffWire.ReadFrom(conn); err != nil {
 			if !errors.Is(err, io.EOF) {
-				log.ErrorContext(ctx, fmt.Sprintf("conn.ReadBytes: %v", err))
+				log.ErrorContext(ctx, "read commands", logKeyErr, err)
 				return
 			}
 		}
-
-		// Message must be at least 3 bytes (type:1, ending: 2)
-		if len(msg) < 3 {
-			log.ErrorContext(ctx, "short read", slog.Int("messageLen", len(msg)))
-			return
+		commands := make([]resp.TypeBulkString, 0, len(arrOffWire))
+		for i, v := range arrOffWire {
+			cmd, ok := v.(resp.TypeBulkString)
+			if !ok {
+				log.Error(fmt.Sprintf("expected BULK STRING, got %v", v))
+				return
+			}
+			commands[i] = cmd
 		}
 
-		// double checking the line ending since I can only pass a byte (\n) to io.ReadBytes.
-		// TODO: See if there is a better solution
-		if !validateEnding(msg) {
-			log.ErrorContext(ctx, "invalid line ending", slog.String("message", string(msg)))
-			return // Or keep reading?
-		}
+		for i := 0; i < len(commands); i++ {
+			cmd := commands[i]
+			log.InfoContext(ctx, "incoming", "command", string(cmd))
 
-		log.InfoContext(ctx, string(msg))
-
-		if !bytes.Contains(msg, []byte("PING")) {
-			continue
-		}
-
-		// Write PONG response
-		if _, err = conn.Write([]byte("+PONG" + msgDelimiter)); err != nil {
-			log.ErrorContext(ctx, fmt.Sprintf("write PONG: %v", err))
-			return
+			switch resp.Command(cmd) {
+			case resp.CmdEcho:
+				msg := commands[i+1]
+				if _, err := conn.Write([]byte(msg)); err != nil {
+					log.ErrorContext(ctx, "handleEcho", logKeyErr, err)
+					return
+				}
+			case resp.CmdPing:
+				// Write PONG response
+				if _, err := conn.Write([]byte("+PONG" + resp.MsgDelimiter)); err != nil {
+					log.ErrorContext(ctx, fmt.Sprintf("write PONG: %v", err))
+					return
+				}
+			default:
+				log.Warn("unknown command", slog.String("message", string(cmd)))
+			}
 		}
 	}
-}
-
-// validateEnding checks if the line ends with the correct delimiter.
-func validateEnding(msg []byte) bool {
-	oneFromEnd := msg[len(msg)-2:]
-	return bytes.Equal(oneFromEnd, []byte(msgDelimiter))
 }
