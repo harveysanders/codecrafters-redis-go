@@ -78,13 +78,13 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 			}
 		}
 		commands := make([]resp.TypeBulkString, 0, len(arrOffWire))
-		for i, v := range arrOffWire {
+		for _, v := range arrOffWire {
 			cmd, ok := v.(resp.TypeBulkString)
 			if !ok {
 				log.Error(fmt.Sprintf("expected BULK STRING, got %v", v))
 				return
 			}
-			commands[i] = cmd
+			commands = append(commands, cmd)
 		}
 
 		for i := 0; i < len(commands); i++ {
