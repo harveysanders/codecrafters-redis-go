@@ -92,7 +92,13 @@ func (a *TypeArray) ReadFrom(r io.Reader) (int64, error) {
 		switch typ {
 		case ByteBulkString:
 			var bs TypeBulkString
-			if err := bs.UnmarshalBinary([]byte(rawItem)); err != nil {
+			content, err := rdr.ReadLine()
+			if err != nil {
+				return nRead, fmt.Errorf("read string content: %w", err)
+			}
+			nRead += int64(len(content))
+
+			if err := bs.UnmarshalBinary([]byte(content)); err != nil {
 				return nRead, fmt.Errorf("bulkString.UnmarshalBinary: %w", err)
 			}
 			*a = append(*a, bs)
@@ -105,7 +111,13 @@ func (a *TypeArray) ReadFrom(r io.Reader) (int64, error) {
 }
 
 func (t *TypeBulkString) UnmarshalBinary(data []byte) error {
-	// Skip the first type byte
+	if len(data) == 0 {
+		return io.EOF
+	}
+	if data[0] != byte(ByteBulkString) {
+		return fmt.Errorf("expected type %q, got %q", ByteBulkString, data[0])
+	}
+
 	*t = TypeBulkString(data[1:])
 	return nil
 }
