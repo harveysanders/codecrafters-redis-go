@@ -71,7 +71,6 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 
 	for {
 		var arrOffWire resp.TypeArray
-
 		if _, err := arrOffWire.ReadFrom(conn); err != nil {
 			if !errors.Is(err, io.EOF) {
 				log.ErrorContext(ctx, "read commands", logKeyErr, err)

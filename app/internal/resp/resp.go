@@ -61,16 +61,24 @@ type (
 
 func (a *TypeArray) ReadFrom(r io.Reader) (int64, error) {
 	rdr := textproto.NewReader(bufio.NewReader(r))
+	typeByte, err := rdr.R.ReadByte()
+	if err != nil {
+		return 0, fmt.Errorf("read type byte: %w", err)
+	}
+	nRead := int64(1)
+	if typeByte != byte(ByteArray) {
+		return nRead, fmt.Errorf("expected type %q, got %q", ByteArray, typeByte)
+	}
+
 	lenRaw, err := rdr.ReadLine()
 	if err != nil {
-		return 0, fmt.Errorf("read length: %w", err)
+		return nRead, fmt.Errorf("read length: %w", err)
 	}
 
 	arrLen, err := strconv.Atoi(lenRaw)
 	if err != nil {
-		return 0, fmt.Errorf("convert length: %w", err)
+		return nRead, fmt.Errorf("convert length: %w", err)
 	}
-	var nRead int64
 	*a = make([]any, 0, arrLen)
 
 	for i := 0; i < arrLen; i++ {
