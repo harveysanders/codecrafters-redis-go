@@ -19,10 +19,32 @@ const (
 	logKeyErr    = "error"
 )
 
+type Option func(s *Server)
+
+func WithLogger(l *slog.Logger) Option {
+	return func(s *Server) {
+		s.Log = l
+	}
+}
+
+func WithStore(store *inmem.Store) Option {
+	return func(s *Server) {
+		s.store = store
+	}
+}
+
 type Server struct {
 	l     net.Listener
 	Log   *slog.Logger
-	store inmem.Store
+	store *inmem.Store
+}
+
+func NewServer(opts ...Option) *Server {
+	srv := &Server{}
+	for _, o := range opts {
+		o(srv)
+	}
+	return srv
 }
 
 func (s *Server) Listen(addr string) error {

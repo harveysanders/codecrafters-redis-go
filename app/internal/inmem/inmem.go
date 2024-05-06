@@ -12,6 +12,13 @@ type Store struct {
 	store map[string]any
 }
 
+func New() *Store {
+	return &Store{
+		mu:    sync.Mutex{},
+		store: make(map[string]any, 4096),
+	}
+}
+
 func (s *Store) Get(key string) (any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -155,13 +155,13 @@ func NewCommands(list []TypeBulkString) *Commands {
 }
 
 func (c *Commands) Next() bool {
-	if len(c.list) < c.i {
+	if c.i >= len(c.list) {
 		return false
 	}
 
 	c.cur = c.list[c.i]
 	c.i++
-	return len(c.list) < c.i
+	return true
 }
 
 func (c *Commands) Cur() TypeBulkString {
