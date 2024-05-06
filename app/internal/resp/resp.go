@@ -17,7 +17,9 @@ type Command string
 
 const (
 	CmdEcho Command = "ECHO"
+	CmdGet  Command = "GET"
 	CmdPing Command = "PING"
+	CmdSet  Command = "SET"
 )
 
 type TypeByte rune
@@ -58,6 +60,10 @@ type (
 	TypeSet  []any
 	TypePush []interface{}
 )
+
+func (s TypeSimpleString) MarshalBinary() ([]byte, error) {
+	return TypeBulkString(s).MarshalBinary()
+}
 
 func (a *TypeArray) ReadFrom(r io.Reader) (int64, error) {
 	rdr := textproto.NewReader(bufio.NewReader(r))
@@ -137,7 +143,34 @@ func (t TypeBulkString) serializedLen() int {
 	return len(t) + headerLen + lenLen + len(MsgDelimiter)*2
 }
 
-// msgLen adds 3 to the payload length. One byte for the type header, two bytes for the line-ending ("\r\n").
-func msgLen(bodyLen int) int {
-	return 1 + bodyLen + len(MsgDelimiter)
+type Commands struct {
+	list []TypeBulkString
+	i    int
+	err  error
+	cur  TypeBulkString
+}
+
+func NewCommands(list []TypeBulkString) *Commands {
+	return &Commands{list: list}
+}
+
+func (c *Commands) Next() bool {
+	if len(c.list) < c.i {
+		return false
+	}
+
+	c.cur = c.list[c.i]
+	c.i++
+	return len(c.list) < c.i
+}
+
+func (c *Commands) Cur() TypeBulkString {
+	return c.cur
+}
+
+func (c *Commands) Err() error {
+	return c.err
+}
+func RespOk() TypeSimpleString {
+	return TypeSimpleString("OK")
 }

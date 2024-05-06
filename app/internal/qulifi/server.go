@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 
+	"github.com/codecrafters-io/redis-starter-go/app/internal/inmem"
 	"github.com/codecrafters-io/redis-starter-go/app/internal/resp"
 )
 
@@ -19,8 +20,9 @@ const (
 )
 
 type Server struct {
-	l   net.Listener
-	Log *slog.Logger
+	l     net.Listener
+	Log   *slog.Logger
+	store inmem.Store
 }
 
 func (s *Server) Listen(addr string) error {
@@ -77,23 +79,29 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 				return
 			}
 		}
-		commands := make([]resp.TypeBulkString, 0, len(arrOffWire))
+		list := make([]resp.TypeBulkString, 0, len(arrOffWire))
 		for _, v := range arrOffWire {
 			cmd, ok := v.(resp.TypeBulkString)
 			if !ok {
 				log.Error(fmt.Sprintf("expected BULK STRING, got %v", v))
 				return
 			}
-			commands = append(commands, cmd)
+			list = append(list, cmd)
 		}
 
-		for i := 0; i < len(commands); i++ {
-			cmd := commands[i]
+		commands := resp.NewCommands(list)
+
+		for commands.Next() {
+			cmd := commands.Cur()
 			log.InfoContext(ctx, "incoming", "command", string(cmd))
 
 			switch resp.Command(cmd) {
 			case resp.CmdEcho:
-				msg := commands[i+1]
+				if !commands.Next() {
+					log.ErrorContext(ctx, "missing ECHO arg")
+					return
+				}
+				msg := commands.Cur()
 				data, err := msg.MarshalBinary()
 				if err != nil {
 					log.ErrorContext(ctx, "msg.MarshalBinary", logKeyErr, err)
@@ -103,12 +111,63 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 					log.ErrorContext(ctx, "handleEcho", logKeyErr, err)
 					return
 				}
+			case resp.CmdGet:
+				if !commands.Next() {
+					log.ErrorContext(ctx, "missing GET key")
+				}
+				v, err := s.store.Get(string(commands.Cur()))
+				if err != nil {
+					log.ErrorContext(ctx, fmt.Sprintf("store.Get(): %v", err))
+					return
+				}
+				val, ok := v.(resp.TypeSimpleString)
+				if !ok {
+					log.ErrorContext(ctx, fmt.Sprintf("expected value to be a string, got: %+v", val))
+				}
+
+				data, err := val.MarshalBinary()
+				if err != nil {
+					log.ErrorContext(ctx, fmt.Sprintf("write GET value marshal binary: %v", err))
+					return
+				}
+				if _, err := conn.Write(data); err != nil {
+					log.ErrorContext(ctx, fmt.Sprintf("write Get response: %v", err))
+					return
+				}
 			case resp.CmdPing:
-				// Write PONG response
-				if _, err := conn.Write([]byte("+PONG" + resp.MsgDelimiter)); err != nil {
+				data, err := resp.TypeSimpleString("PONG").MarshalBinary()
+				if err != nil {
+					log.ErrorContext(ctx, fmt.Sprintf("pong.MarshalBinary: %v", err))
+					return
+				}
+
+				if _, err := conn.Write(data); err != nil {
 					log.ErrorContext(ctx, fmt.Sprintf("write PONG: %v", err))
 					return
 				}
+			case resp.CmdSet:
+				if !commands.Next() {
+					log.ErrorContext(ctx, "missing SET key")
+				}
+				key := commands.Cur()
+				if !commands.Next() {
+					log.ErrorContext(ctx, "missing SET value")
+				}
+				err := s.store.Set(string(key), commands.Cur())
+				if err != nil {
+					log.ErrorContext(ctx, fmt.Sprintf("store.Set(): %v", err))
+					return
+				}
+				okResp, err := resp.RespOk().MarshalBinary()
+				if err != nil {
+					log.ErrorContext(ctx, "marshall OK response: %v", err)
+					return
+				}
+				if _, err := conn.Write(okResp); err != nil {
+					log.ErrorContext(ctx, fmt.Sprintf("write OK: %v", err))
+					return
+				}
+
 			default:
 				log.Warn("unknown command", slog.String("message", string(cmd)))
 			}
