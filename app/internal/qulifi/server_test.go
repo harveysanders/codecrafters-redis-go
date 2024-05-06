@@ -26,19 +26,40 @@ func TestServer(t *testing.T) {
 
 	time.Sleep(250 * time.Millisecond)
 
+	type reqResp struct {
+		req      string
+		wantResp string
+		desc     string
+	}
+	testCases := []reqResp{
+		{
+			desc:     "Send SET request",
+			req:      "*3\r\n$3\r\nSET\r\n$4\r\npear\r\n$5\r\ngrape\r\n",
+			wantResp: "$2\r\nOK\r\n",
+		},
+		{
+			desc:     "Receive set value with GET request",
+			req:      "*2\r\n$3\r\nGET\r\n$4\r\npear\r\n",
+			wantResp: "$5\r\ngrape\r\n",
+		},
+	}
 	client, err := net.Dial("tcp", addr)
 	require.NoError(t, err)
 
-	_, err = client.Write([]byte("*3\r\n$3\r\nSET\r\n$4\r\npear\r\n$5\r\ngrape\r\n"))
-	require.NoError(t, err)
-
 	resp := make([]byte, 1024)
-	n, err := client.Read(resp)
-	require.NoError(t, err)
-	require.Greater(t, n, 0, "expected some response")
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			_, err = client.Write([]byte(tc.req))
+			require.NoError(t, err)
 
-	want := "$2\r\nOK\r\n"
-	got := resp[:n]
+			n, err := client.Read(resp)
+			require.NoError(t, err)
+			require.Greater(t, n, 0, "expected some response")
 
-	require.Equal(t, want, string(got))
+			got := resp[:n]
+
+			require.Equal(t, tc.wantResp, string(got))
+		})
+	}
+
 }

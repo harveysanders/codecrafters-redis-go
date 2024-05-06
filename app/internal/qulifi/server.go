@@ -2,6 +2,7 @@ package qulifi
 
 import (
 	"context"
+	"encoding"
 	"errors"
 	"fmt"
 	"io"
@@ -142,31 +143,30 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 					log.ErrorContext(ctx, fmt.Sprintf("store.Get(): %v", err))
 					return
 				}
-				val, ok := v.(resp.TypeSimpleString)
-				if !ok {
-					log.ErrorContext(ctx, fmt.Sprintf("expected value to be a string, got: %+v", val))
+				switch val := v.(type) {
+				case resp.TypeBulkString:
+					if err := marshalAndSend(val, conn); err != nil {
+						log.ErrorContext(ctx, fmt.Sprintf("write GET response: %v", err))
+						return
+					}
+
+				case resp.TypeSimpleString:
+					if err := marshalAndSend(val, conn); err != nil {
+						log.ErrorContext(ctx, fmt.Sprintf("write GET response: %v", err))
+						return
+					}
+
+				default:
+					log.WarnContext(ctx, fmt.Sprintf("don't know what to do with type %T for value: %+v", v, v))
+					continue
 				}
 
-				data, err := val.MarshalBinary()
-				if err != nil {
-					log.ErrorContext(ctx, fmt.Sprintf("write GET value marshal binary: %v", err))
-					return
-				}
-				if _, err := conn.Write(data); err != nil {
-					log.ErrorContext(ctx, fmt.Sprintf("write Get response: %v", err))
-					return
-				}
 			case resp.CmdPing:
-				data, err := resp.TypeSimpleString("PONG").MarshalBinary()
-				if err != nil {
-					log.ErrorContext(ctx, fmt.Sprintf("pong.MarshalBinary: %v", err))
+				if err := marshalAndSend(resp.TypeSimpleString("PONG"), conn); err != nil {
+					log.ErrorContext(ctx, fmt.Sprintf("write PONG response: %v", err))
 					return
 				}
 
-				if _, err := conn.Write(data); err != nil {
-					log.ErrorContext(ctx, fmt.Sprintf("write PONG: %v", err))
-					return
-				}
 			case resp.CmdSet:
 				if !commands.Next() {
 					log.ErrorContext(ctx, "missing SET key")
@@ -195,4 +195,16 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 			}
 		}
 	}
+}
+
+func marshalAndSend(val encoding.BinaryMarshaler, conn io.Writer) error {
+	data, err := val.MarshalBinary()
+	if err != nil {
+		return fmt.Errorf("val.MarshalBinary(): %w", err)
+	}
+	if _, err := conn.Write(data); err != nil {
+
+		return fmt.Errorf("conn.Write(): %w", err)
+	}
+	return nil
 }
